@@ -53,3 +53,4 @@ test.sh
 data/
 pretrained_weight/
 saved_models/
+changedetection/saved_models/
