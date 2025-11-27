@@ -52,3 +52,4 @@ test.sh
 # local data and weights
 data/
 pretrained_weight/
+saved_models/
