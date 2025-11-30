@@ -165,13 +165,13 @@ class ChangeDecoder(nn.Module):
         p41 = self.st_block_41(torch.cat([pre_feat_4, post_feat_4], dim=1))
         B, C, H, W = pre_feat_4.size()
         # Create an empty tensor of the correct shape (B, C, H, 2*W)
-        ct_tensor_42 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_42 = torch.empty(B, C, H, 2*W, device=pre_feat_4.device)
         # Fill in odd columns with A and even columns with B
         ct_tensor_42[:, :, :, ::2] = pre_feat_4  # Odd columns
         ct_tensor_42[:, :, :, 1::2] = post_feat_4  # Even columns
         p42 = self.st_block_42(ct_tensor_42)
 
-        ct_tensor_43 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_43 = torch.empty(B, C, H, 2*W, device=pre_feat_4.device)
         ct_tensor_43[:, :, :, 0:W] = pre_feat_4
         ct_tensor_43[:, :, :, W:] = post_feat_4
         p43 = self.st_block_43(ct_tensor_43)
@@ -185,13 +185,13 @@ class ChangeDecoder(nn.Module):
         p31 = self.st_block_31(torch.cat([pre_feat_3, post_feat_3], dim=1))
         B, C, H, W = pre_feat_3.size()
         # Create an empty tensor of the correct shape (B, C, H, 2*W)
-        ct_tensor_32 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_32 = torch.empty(B, C, H, 2*W, device=pre_feat_3.device)
         # Fill in odd columns with A and even columns with B
         ct_tensor_32[:, :, :, ::2] = pre_feat_3  # Odd columns
         ct_tensor_32[:, :, :, 1::2] = post_feat_3  # Even columns
         p32 = self.st_block_32(ct_tensor_32)
 
-        ct_tensor_33 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_33 = torch.empty(B, C, H, 2*W, device=pre_feat_3.device)
         ct_tensor_33[:, :, :, 0:W] = pre_feat_3
         ct_tensor_33[:, :, :, W:] = post_feat_3
         p33 = self.st_block_33(ct_tensor_33)
@@ -206,13 +206,13 @@ class ChangeDecoder(nn.Module):
         p21 = self.st_block_21(torch.cat([pre_feat_2, post_feat_2], dim=1))
         B, C, H, W = pre_feat_2.size()
         # Create an empty tensor of the correct shape (B, C, H, 2*W)
-        ct_tensor_22 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_22 = torch.empty(B, C, H, 2*W, device=pre_feat_2.device)
         # Fill in odd columns with A and even columns with B
         ct_tensor_22[:, :, :, ::2] = pre_feat_2  # Odd columns
         ct_tensor_22[:, :, :, 1::2] = post_feat_2  # Even columns
         p22 = self.st_block_22(ct_tensor_22)
 
-        ct_tensor_23 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_23 = torch.empty(B, C, H, 2*W, device=pre_feat_2.device)
         ct_tensor_23[:, :, :, 0:W] = pre_feat_2
         ct_tensor_23[:, :, :, W:] = post_feat_2
         p23 = self.st_block_23(ct_tensor_23)
@@ -227,13 +227,13 @@ class ChangeDecoder(nn.Module):
         p11 = self.st_block_11(torch.cat([pre_feat_1, post_feat_1], dim=1))
         B, C, H, W = pre_feat_1.size()
         # Create an empty tensor of the correct shape (B, C, H, 2*W)
-        ct_tensor_12 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_12 = torch.empty(B, C, H, 2*W, device=pre_feat_1.device)
         # Fill in odd columns with A and even columns with B
         ct_tensor_12[:, :, :, ::2] = pre_feat_1  # Odd columns
         ct_tensor_12[:, :, :, 1::2] = post_feat_1  # Even columns
         p12 = self.st_block_12(ct_tensor_12)
 
-        ct_tensor_13 = torch.empty(B, C, H, 2*W).cuda()
+        ct_tensor_13 = torch.empty(B, C, H, 2*W, device=pre_feat_1.device)
         ct_tensor_13[:, :, :, 0:W] = pre_feat_1
         ct_tensor_13[:, :, :, W:] = post_feat_1
         p13 = self.st_block_13(ct_tensor_13)

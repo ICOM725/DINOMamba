@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from changedetection.models.Mamba_backbone import Backbone_VSSM
+# DINO 主干
+from changedetection.models.DINO_backbone import Backbone_DINOv2
 from classification.models.vmamba import VSSM, LayerNorm2d, VSSBlock, Permute
 import os
 import time
@@ -25,8 +27,16 @@ from fvcore.nn import FlopCountAnalysis, flop_count_str, flop_count, parameter_c
 class ChangeMambaBCD(nn.Module):
     def __init__(self, pretrained, **kwargs):
         super(ChangeMambaBCD, self).__init__()
-        self.encoder = Backbone_VSSM(out_indices=(0, 1, 2, 3), pretrained=pretrained, **kwargs)
-        
+        # self.encoder = Backbone_VSSM(out_indices=(0, 1, 2, 3), pretrained=pretrained, **kwargs)
+        # 原 VSSM 主干（备选）
+        # self.encoder = Backbone_VSSM(out_indices=(0, 1, 2, 3), pretrained=pretrained, **kwargs)
+        # DINOv2 + LoRA 主干
+        self.encoder = Backbone_DINOv2(
+            version='vit_base_patch14_dinov2',
+            use_lora=True,
+            r=16,
+            pretrained_path='./pretrained_weight/dinov2_vitb14_pretrain.pth'
+        )        
         _NORMLAYERS = dict(
             ln=nn.LayerNorm,
             ln2d=LayerNorm2d,
@@ -41,14 +51,14 @@ class ChangeMambaBCD(nn.Module):
         )
  
 
-        norm_layer: nn.Module = _NORMLAYERS.get(kwargs['norm_layer'].lower(), None)        
+        norm_layer = LayerNorm2d if self.encoder.channel_first else _NORMLAYERS.get(kwargs['norm_layer'].lower(), None)        
         ssm_act_layer: nn.Module = _ACTLAYERS.get(kwargs['ssm_act_layer'].lower(), None)
         mlp_act_layer: nn.Module = _ACTLAYERS.get(kwargs['mlp_act_layer'].lower(), None)
 
         # Remove the explicitly passed args from kwargs to avoid "got multiple values" error
         clean_kwargs = {k: v for k, v in kwargs.items() if k not in ['norm_layer', 'ssm_act_layer', 'mlp_act_layer']}
         self.decoder = ChangeDecoder(
-            encoder_dims=self.encoder.dims,
+            encoder_dims=getattr(self.encoder, "dims", [96, 192, 384, 768]),
             channel_first=self.encoder.channel_first,
             norm_layer=norm_layer,
             ssm_act_layer=ssm_act_layer,

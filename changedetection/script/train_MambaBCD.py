@@ -11,6 +11,36 @@ import time
 
 import numpy as np
 
+# 兼容性补丁：包装 register_pytree_node，忽略 serialized_type_name 等多余参数
+import torch.utils._pytree as _pytree
+
+def _register_pytree_node_compat(*args, **kwargs):
+    fn = getattr(_pytree, "_register_pytree_node", None)
+    if fn is None:
+        return
+    if len(args) >= 3:
+        return fn(args[0], args[1], args[2])
+    t = kwargs.get("type") or kwargs.get("cls")
+    to_it = kwargs.get("to_iterable")
+    from_it = kwargs.get("from_iterable")
+    return fn(t, to_it, from_it)
+
+def _register_pytree_node_class_compat(*args, **kwargs):
+    fn = getattr(_pytree, "_register_pytree_node_class", None)
+    if fn is None:
+        return
+    return fn(*args, **kwargs)
+
+_pytree.register_pytree_node = _register_pytree_node_compat
+_pytree.register_pytree_node_class = _register_pytree_node_class_compat
+
+# 兼容性补丁：部分包期望 register_pytree_node（torch 2.1.x 中叫 _register_pytree_node）
+import torch.utils._pytree as _pytree
+if not hasattr(_pytree, "register_pytree_node") and hasattr(_pytree, "_register_pytree_node"):
+    _pytree.register_pytree_node = _pytree._register_pytree_node
+if not hasattr(_pytree, "register_pytree_node_class") and hasattr(_pytree, "_register_pytree_node_class"):
+    _pytree.register_pytree_node_class = _pytree._register_pytree_node_class
+
 from changedetection.configs.config import get_config
 
 import torch
@@ -90,13 +120,19 @@ class Trainer(object):
                                  weight_decay=args.weight_decay)
 
     def training(self):
-        best_kc = 0.0
+        best_kc = -1.0
         best_round = []
+        best_model_path = os.path.join(self.model_save_path, 'best_model.pth')
         torch.cuda.empty_cache()
-        elem_num = len(self.train_data_loader)
-        train_enumerator = enumerate(self.train_data_loader)
-        for _ in tqdm(range(elem_num)):
-            itera, data = train_enumerator.__next__()
+
+        train_iter = iter(self.train_data_loader)
+        for step in tqdm(range(self.args.max_iters)):
+            try:
+                data = next(train_iter)
+            except StopIteration:
+                train_iter = iter(self.train_data_loader)
+                data = next(train_iter)
+
             pre_change_imgs, post_change_imgs, labels, _ = data
 
             pre_change_imgs = pre_change_imgs.cuda().float()
@@ -114,19 +150,20 @@ class Trainer(object):
 
             final_loss.backward()
             self.optim.step()
-            if (itera + 1) % 10 == 0:
-                print(f'iter is {itera + 1}, overall loss is {final_loss}')
-                if (itera + 1) % 500 == 0:
+            if (step + 1) % 10 == 0:
+                print(f'iter is {step + 1}, overall loss is {final_loss}')
+                if (step + 1) % self.args.val_interval == 0:
                     self.deep_model.eval()
                     rec, pre, oa, f1_score, iou, kc = self.validation()
                     if kc > best_kc:
-                        torch.save(self.deep_model.state_dict(),
-                                   os.path.join(self.model_save_path, f'{itera + 1}_model.pth'))
                         best_kc = kc
                         best_round = [rec, pre, oa, f1_score, iou, kc]
+                        torch.save(self.deep_model.state_dict(), best_model_path)
                     self.deep_model.train()
 
         print('The accuracy of the best round is ', best_round)
+        # 可选：最后一次权重
+        torch.save(self.deep_model.state_dict(), os.path.join(self.model_save_path, 'last_model.pth'))
 
     def validation(self):
         print('---------starting evaluation-----------')
@@ -189,6 +226,7 @@ def main():
     parser.add_argument('--start_iter', type=int, default=0)
     parser.add_argument('--cuda', type=bool, default=True)
     parser.add_argument('--max_iters', type=int, default=240000)
+    parser.add_argument('--val_interval', type=int, default=500)
     parser.add_argument('--model_type', type=str, default='ChangeMambaBCD')
     parser.add_argument('--model_param_path', type=str, default='../saved_models')
 
