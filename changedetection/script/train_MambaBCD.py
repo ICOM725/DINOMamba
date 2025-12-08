@@ -152,14 +152,14 @@ class Trainer(object):
             self.optim.step()
             if (step + 1) % 10 == 0:
                 print(f'iter is {step + 1}, overall loss is {final_loss}')
-                if (step + 1) % self.args.val_interval == 0:
-                    self.deep_model.eval()
-                    rec, pre, oa, f1_score, iou, kc = self.validation()
-                    if kc > best_kc:
-                        best_kc = kc
-                        best_round = [rec, pre, oa, f1_score, iou, kc]
-                        torch.save(self.deep_model.state_dict(), best_model_path)
-                    self.deep_model.train()
+            if (step + 1) % self.args.val_interval == 0:
+                self.deep_model.eval()
+                rec, pre, oa, f1_score, iou, kc = self.validation()
+                if kc > best_kc:
+                    best_kc = kc
+                    best_round = [rec, pre, oa, f1_score, iou, kc]
+                    torch.save(self.deep_model.state_dict(), best_model_path)
+                self.deep_model.train()
 
         print('The accuracy of the best round is ', best_round)
         # 可选：最后一次权重
@@ -247,6 +247,26 @@ def main():
     args.test_data_name_list = test_data_name_list
 
     trainer = Trainer(args)
+# =========== 插入开始 ===========
+    # 获取模型 (假设 trainer.model 或者 trainer.deep_model 是你的模型实例)
+    # 如果 trainer 封装了模型，通常是 trainer.model 或 trainer.deep_model
+    # 也可以直接在 main 里找 model 初始化的位置
+    
+    model_to_count = trainer.deep_model if hasattr(trainer, 'deep_model') else trainer.model
+    
+    trainable_params = sum(p.numel() for p in model_to_count.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model_to_count.parameters())
+    
+    print("\n" + "="*40)
+    print(f"📊 [Parameter Check]")
+    print(f"   Total Params:      {total_params / 1e6:.2f} M")
+    print(f"   Trainable Params:  {trainable_params / 1e6:.2f} M  <-- 填进论文的数字!")
+    print(f"   Ratio:             {trainable_params/total_params*100:.2f}%")
+    print("="*40 + "\n")
+    
+    # 如果你只想看参数量不想训练，把下面这行取消注释，程序跑完这步就会自动退出
+    # exit() 
+    # =========== 插入结束 ===========
     trainer.training()
 
 
