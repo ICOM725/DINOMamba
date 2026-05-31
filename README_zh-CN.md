@@ -1,386 +1,254 @@
-<div align="center">
-<h1 align="center">ChangeMamba</h1>
+# DINOMamba / FMB-CD
 
-<h3>ChangeMamba: 基于时空状态空间模型的遥感影像变化检测</h3>
+基于基础模型桥接的遥感变化检测方法：通过语义引导细节注入和跨流特征聚合实现高效变化检测。
 
+本仓库是 FMB-CD 小论文对应的二值遥感变化检测实现。代码基于 ChangeMamba 改造，将原本需要全量微调的 VMamba 编码器替换为参数高效的 DINOv2 双流编码器。
 
-[Hongruixuan Chen](https://scholar.google.ch/citations?user=XOk4Cf0AAAAJ&hl=zh-CN&oi=ao)<sup>1 #</sup>, [Jian Song](https://scholar.google.ch/citations?user=CgcMFJsAAAAJ&hl=zh-CN)<sup>1,2 #</sup>, [Chengxi Han](https://chengxihan.github.io/)<sup>3</sup>, [Junshi Xia](https://scholar.google.com/citations?user=n1aKdTkAAAAJ&hl=en)<sup>2</sup>, [Naoto Yokoya](https://scholar.google.co.jp/citations?user=DJ2KOn8AAAAJ&hl=en)<sup>1,2 *</sup>
+## 方法简介
 
-<sup>1</sup> 东京大学, <sup>2</sup> 理化学研究所先进智能研究中心,  <sup>3</sup> 武汉大学.
+遥感变化检测同时需要稳定的高层语义和清晰的空间细节。全量微调大模型效果较强，但训练成本高；冻结基础模型可以降低训练成本，但 ViT 的 patch 特征容易造成边界模糊；直接加入 CNN 细节分支又可能放大背景噪声。
 
-<sup>#</sup> 共同第一作者, <sup>*</sup> 通讯作者
+FMB-CD 的核心设计包括：
 
-[![TGRS paper](https://img.shields.io/badge/TGRS-paper-00629B.svg)](https://ieeexplore.ieee.org/document/10565926)  [![arXiv paper](https://img.shields.io/badge/arXiv-paper-b31b1b.svg)](https://arxiv.org/pdf/2404.03425.pdf) [![Zenodo Models](https://img.shields.io/badge/Zenodo-Models-green)](https://zenodo.org/records/14037769) ![visitors](https://visitor-badge.laobi.icu/badge?page_id=ChenHongruixuan.MambaCD&left_color=%2363C7E6&right_color=%23CEE75F)
+- **冻结 DINOv2 语义流**：提供稳健的高层语义先验，并通过 LoRA 做轻量适配。
+- **可训练 CNN 细节流**：补充建筑边界、小目标和高频纹理细节。
+- **语义引导细节注入 SGDI**：在融合前抑制与变化任务无关的细节噪声。
+- **跨流特征聚合 CSFA**：对齐并重标定 ViT/CNN 异构特征。
+- **Mamba 解码器**：继承 ChangeMamba 的多尺度特征聚合能力。
 
-[**简介**](#简介) | [**开始使用**](#%EF%B8%8F开始使用) | [**结果下载**](#%EF%B8%8F结果下载) | [**常见问题**](#引用) | [**其他**](#联系我们) | [**English Version**](https://github.com/ChenHongruixuan/MambaCD)
+当前二值变化检测代码主要位于：
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/changemamba-remote-sensing-change-detection/change-detection-on-sysu-cd)](https://paperswithcode.com/sota/change-detection-on-sysu-cd?p=changemamba-remote-sensing-change-detection)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/changemamba-remote-sensing-change-detection/change-detection-on-levir)](https://paperswithcode.com/sota/change-detection-on-levir?p=changemamba-remote-sensing-change-detection)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/changemamba-remote-sensing-change-detection/change-detection-on-whu-cd)](https://paperswithcode.com/sota/change-detection-on-whu-cd?p=changemamba-remote-sensing-change-detection)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/changemamba-remote-sensing-change-detection/change-detection-on-second)](https://paperswithcode.com/sota/change-detection-on-second?p=changemamba-remote-sensing-change-detection)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/changemamba-remote-sensing-change-detection/2d-semantic-segmentation-on-xbd)](https://paperswithcode.com/sota/2d-semantic-segmentation-on-xbd?p=changemamba-remote-sensing-change-detection)
+- `changedetection/models/ChangeMambaBCD.py`
+- `changedetection/models/DINO_backbone.py`
+- `changedetection/models/ChangeDecoder.py`
 
-</div>
+SCD/BDA 相关脚本和 VMamba 模块仍保留自原 ChangeMamba 工程，主要用于参考；本 README 重点说明 FMB-CD 的二值变化检测流程。
 
-## 🛎️更新日志
-* **` 通知🐍🐍`**: ChangeMamba已经被 [IEEE TGRS](https://ieeexplore.ieee.org/document/10565926) 接收！仓库的代码已更新完毕！如果对您的研究有所帮助，请考虑给该仓库一个⭐️**star**⭐️！
-* **` 2025年05月21日`**: 更新了ChangeMamba在[BRIGHT数据集](https://github.com/ChenHongruixuan/BRIGHT)上的训练代码和[模型权重](https://zenodo.org/records/14037769)！！
-* **` 2025年05月08日`**: ChangeMamba连续八个月入选🔥ESI热点和高被引论文🏆！！
-* **` 2024年11月14日`**: ChangeMamba入选为🔥ESI 热点论文🔥！！
-* **` 2024年09月14日`**: ChangeMamba入选为🏆ESI 高被引论文🏆！！
-* **` 2024年07月19日`**: ChangeMamba入选为[ IEEE TGRS 热点论文](https://ieeexplore.ieee.org/xpl/topAccessedArticles.jsp?punumber=36)！！
-* **` 2024年07月19日`**: ChangeMamba入选为[ IEEE GRSS 周推荐论文](https://www.linkedin.com/feed/update/urn:li:activity:7219970529498214400/)！！
-* **` 2024年06月17日`**: ChangeMamba被 [IEEE TGRS](https://ieeexplore.ieee.org/document/10565926) 接收！
-* **` 2024年06月08日`**: 中文版文档已上线！！
-* **` 2024年04月18日`**: 发布了 ChangeMamba 模型在 BCD 任务上的所有权重。欢迎[使用](#%EF%B8%8F结果下载)！！
-* **` 2024年04年05日`**: MambaBCD、MambaSCD 和 MambaBDA 的模型和训练代码已经整理并上传。欢迎使用！！
+## 论文实验结果
 
-## 🔭简介
+以下结果来自当前 FMB-CD 小论文稿件。
 
-* [**ChangeMamba**](https://ieeexplore.ieee.org/document/10565926)系列模型包括三种有效的变化检测任务的基准模型，分别为二元变化检测模型MambaBCD、语义变化检测模型MambaSCD和建筑物损坏评估模型MambaBDA。
+| 数据集 | OA | F1 | IoU | Recall | Precision |
+|---|---:|---:|---:|---:|---:|
+| LEVIR-CD+ | 98.90 | 85.90 | 75.29 | 83.63 | 88.30 |
+| WHU-CD | 99.49 | 92.76 | 86.50 | 92.14 | 93.38 |
+| SYSU-CD | 92.85 | 84.32 | 72.89 | 81.55 | 87.29 |
 
-<p align="center">
-  <img src="figures/network_architecture.png" alt="accuracy" width="90%">
-</p>
+效率对比：
 
-* **ChangeMamba中的三种时空关系学习机制**
+| 方法 | 可训练参数量 | 训练迭代数 |
+|---|---:|---:|
+| ChangeMamba-Base | 84.7M | 240k |
+| FMB-CD | 17.55M | 40k |
 
-<p align="center">
-  <img src="figures/STLM.png" alt="arch" width="60%">
-</p>
+说明：FMB-CD 包含冻结的 DINOv2 主干，因此这里报告可训练参数量，用于更准确反映优化成本。
 
+## 项目结构
 
-## 🗝️开始使用
-### `一、安装`
-此仓库的代码是在 Linux 系统下运行的。我们尚未测试是否能在其他操作系统下运行。
-
-首先需要安装[VMama仓库](https://github.com/MzeroMiko/VMamba)。以下安装顺序取自VMama仓库。
-
-
-**步骤 1 —— 克隆仓库:**
-
-克隆该版本库并导航至项目目录：
-```bash
-git clone https://github.com/ChenHongruixuan/git
-cd MambaCD
+```text
+DINOMamba/
+├── changedetection/
+│   ├── configs/vssm1/              # Mamba 解码器配置
+│   ├── datasets/                   # BCD/SCD/BDA 数据加载
+│   ├── models/
+│   │   ├── ChangeMambaBCD.py       # FMB-CD 二值变化检测入口
+│   │   ├── DINO_backbone.py        # DINOv2 + LoRA + 细节分支
+│   │   └── ChangeDecoder.py        # Mamba 解码器
+│   └── script/
+│       ├── train_MambaBCD.py       # 二值变化检测训练
+│       └── infer_MambaBCD.py       # 二值变化检测推理
+├── classification/                 # 继承自 ChangeMamba 的 VMamba 代码
+├── kernels/selective_scan/         # CUDA selective scan 算子
+├── pretrained_weight/              # DINOv2 权重和模型 checkpoint
+├── data/                           # 本地数据或数据列表
+└── requirements.txt
 ```
 
+## 环境安装
 
-**步骤 2 —— 环境设置:**
-
-建议设置 conda 环境并通过 pip 安装依赖项。使用以下命令设置环境：
-
-***创建并激活新的 conda 环境***
+selective scan CUDA 算子主要面向 Linux + CUDA 环境。Windows 可以用于代码编辑和轻量查看，正式训练建议在 CUDA Linux 环境中运行。
 
 ```bash
-conda create -n changemamba
-conda activate changemamba
-```
+conda create -n dinomamba python=3.8 -y
+conda activate dinomamba
 
-***安装依赖项***
+# 先按自己的 CUDA 版本安装 PyTorch。
+# 示例：
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-```bash
 pip install -r requirements.txt
-cd kernels/selective_scan && pip install .
+pip install peft "timm>=0.9.0"
+
+cd kernels/selective_scan
+pip install .
+cd ../..
 ```
 
+注意：
 
-***检测和分割任务的依赖库（在 VMamba 中为可选项）***
+- 原 ChangeMamba 的依赖中固定了 `timm==0.4.12`。
+- FMB-CD 使用 `timm.create_model("vit_base_patch14_dinov2")`，因此需要支持 DINOv2 的新版 `timm`。
+- LoRA 注入需要安装 `peft`。
+
+## 预训练权重
+
+DINOv2 ViT-B/14 权重请放置到：
+
+```text
+pretrained_weight/dinov2_vitb14_pretrain.pth
+```
+
+当前代码会在 `changedetection/models/DINO_backbone.py` 中加载该路径。
+
+旧的 ChangeMamba/VMamba checkpoint 不适用于当前 FMB-CD 编码器。推理时请使用当前模型重新训练得到的 checkpoint，并通过 `--resume` 加载。
+
+## 数据准备
+
+SYSU-CD、LEVIR-CD+、WHU-CD 等二值变化检测数据集请组织为：
+
+```text
+DATASET_ROOT/
+├── train/
+│   ├── T1/
+│   │   ├── 00001.png
+│   │   └── ...
+│   ├── T2/
+│   │   ├── 00001.png
+│   │   └── ...
+│   └── GT/
+│       ├── 00001.png
+│       └── ...
+├── test/
+│   ├── T1/
+│   ├── T2/
+│   └── GT/
+├── train_list.txt
+└── test_list.txt
+```
+
+GT 标签中，未变化像素为 `0`，变化像素为 `255`。
+
+## 训练
+
+请在项目根目录运行训练命令。当前 DINOv2 权重路径是相对于项目根目录写的，因此不要先 `cd changedetection` 再运行。
+
+LEVIR-CD+ 示例：
 
 ```bash
-pip install mmengine==0.10.1 mmcv==2.1.0 opencv-python-headless ftfy regex
-pip install mmdet==3.3.0 mmsegmentation==1.2.2 mmpretrain==1.2.0
+python changedetection/script/train_MambaBCD.py \
+  --dataset LEVIR-CD+ \
+  --batch_size 16 \
+  --crop_size 256 \
+  --max_iters 40000 \
+  --val_interval 1000 \
+  --model_type FMB-CD \
+  --model_param_path changedetection/saved_models \
+  --train_dataset_path data/LEVIR-CD+/train \
+  --train_data_list_path data/LEVIR-CD+/train_list.txt \
+  --test_dataset_path data/LEVIR-CD+/test \
+  --test_data_list_path data/LEVIR-CD+/test_list.txt \
+  --cfg changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml
 ```
-### `二、下载预训练权重`
-另外，请下载[VMamba-Tiny](https://zenodo.org/records/14037769), [VMamba-Small](https://zenodo.org/records/14037769), and [VMamba-Base](https://zenodo.org/records/14037769)在ImageNet上的预训练权重并把它们放在下述文件夹中 
+
+SYSU-CD 示例：
 
 ```bash
-project_path/MambaCD/pretrained_weight/
+python changedetection/script/train_MambaBCD.py \
+  --dataset SYSU \
+  --batch_size 16 \
+  --crop_size 256 \
+  --max_iters 40000 \
+  --val_interval 1000 \
+  --model_type FMB-CD \
+  --model_param_path changedetection/saved_models \
+  --train_dataset_path /path/to/SYSU/train \
+  --train_data_list_path /path/to/SYSU/train_list.txt \
+  --test_dataset_path /path/to/SYSU/test \
+  --test_data_list_path /path/to/SYSU/test_list.txt \
+  --cfg changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml
 ```
 
-### `三、数据准备`
-***二元变化检测***
+训练过程会保存：
 
-论文使用了三个基准数据集 [SYSU](https://github.com/liumency/SYSU-CD)、[LEVIR-CD+](https://chenhao.in/LEVIR/) 和 [WHU-CD](http://gpcv.whu.edu.cn/data/building_dataset.html) 用于评估模型的二元变化检测的性能。请下载这些数据集，并将其组织成下述文件夹/文件结构：
+- `best_model.pth`
+- `last_model.pth`
+- 若开启可视化，会在模型目录下保存误检/漏检和特征可视化结果。
 
-```
-${DATASET_ROOT}   # 数据集根目录，例如: /home/username/data/SYSU
-├── train
-│   ├── T1
-│   │   ├──00001.png
-│   │   ├──00002.png
-│   │   ├──00003.png
-│   │   ...
-│   │
-│   ├── T2
-│   │   ├──00001.png
-│   │   ... 
-│   │
-│   └── GT
-│       ├──00001.png 
-│       ...   
-│   
-├── val
-│   ├── ...
-│   ...
-│
-├── test
-│   ├── ...
-│   ...
-│ 
-├── train.txt   # 数据名称列表，记录所有训练数据的名称
-├── val.txt     # 数据名称列表，记录所有验证数据的名称
-└── test.txt    # 数据名称列表，记录所有测试数据的名称
-```
+## 推理
 
-***语义变化检测***
-
-语义变化检测任务的数据集为[SECOND数据集](https://captain-whu.github.io/SCD/)。 请下载该数据集，并使其具有以下文件夹/文件结构。请注意，**原始 SECOND 数据集中的土地覆盖图为 RGB 图像。您需要将其转换为单通道图像**。另外，**二元变化图需要您自行生成**，并将其放入文件夹 [`GT_CD`]。
-
-或者，欢迎您直接下载并使用经过我们[预处理后的SECOND 数据集](https://zenodo.org/records/14037769)。
-
-```
-${DATASET_ROOT}   # 数据集根目录，例如 /home/username/data/SECOND
-├── train
-│   ├── T1
-│   │   ├──00001.png
-│   │   ├──00002.png
-│   │   ├──00003.png
-│   │   ...
-│   │
-│   ├── T2
-│   │   ├──00001.png
-│   │   ... 
-│   │
-│   ├── GT_CD   # 二元变化图
-│   │   ├──00001.png 
-│   │   ... 
-│   │
-│   ├── GT_T1   # T1时相的土地覆盖图
-│   │   ├──00001.png 
-│   │   ...  
-│   │
-│   └── GT_T2   # T2时相的土地覆盖图
-│       ├──00001.png 
-│       ...  
-│   
-├── test
-│   ├── ...
-│   ...
-│ 
-├── train.txt
-└── test.txt
-```
-
-***建筑物损坏评估***
-
-xBD 数据集可从 [xView 2 挑战赛网站](https://xview2.org/dataset) 下载。下载后，请按以下结构进行组织： 
-```
-${DATASET_ROOT}   # 数据集根目录，例如：/home/username/data/xBD
-├── train
-│   ├── images
-│   │   ├──guatemala-volcano_00000000_pre_disaster.png
-│   │   ├──guatemala-volcano_00000000_post_disaster.png
-│   │   ...
-│   │
-│   └── targets
-│       ├──guatemala-volcano_00000003_pre_disaster_target.png
-│       ├──guatemala-volcano_00000003_post_disaster_target.png
-│       ... 
-│   
-├── test
-│   ├── ...
-│   ...
-│
-├── holdout
-│   ├── ...
-│   ...
-│
-├── train.txt # 数据名称列表，记录所有训练数据的名称
-├── test.txt  # 数据名称列表，记录所有测试数据的名称
-└── holdout.txt  # 数据名称列表，记录所有留出集数据的名称
-```
-
-
-### `四、训练模型`
-在训练模型之前，请进入 [`changedetection`]文件夹，其中包含网络定义、训练和测试的所有代码。
+推理时请使用 `--resume` 加载 FMB-CD 训练好的 checkpoint。
 
 ```bash
-cd <project_path>/MambaCD/changedetection
+python changedetection/script/infer_MambaBCD.py \
+  --dataset LEVIR-CD+ \
+  --model_type FMB-CD \
+  --test_dataset_path data/LEVIR-CD+/test \
+  --test_data_list_path data/LEVIR-CD+/test_list.txt \
+  --cfg changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml \
+  --resume changedetection/saved_models/LEVIR-CD+/FMB-CD_xxx/best_model.pth \
+  --result_saved_path results
 ```
 
-***二元变化检测***
+预测结果会保存到：
 
-运行以下命令在 SYSU 数据集上训练和评估 MambaBCD-Small模型：
-```bash
-python script/train_MambaBCD.py  --dataset 'SYSU' \
-                                 --batch_size 16 \
-                                 --crop_size 256 \
-                                 --max_iters 320000 \
-                                 --model_type MambaBCD_Small \
-                                 --model_param_path '<project_path>/MambaCD/changedetection/saved_models' \ 
-                                 --train_dataset_path '<dataset_path>/SYSU/train' \
-                                 --train_data_list_path '<dataset_path>/SYSU/train_list.txt' \
-                                 --test_dataset_path '<dataset_path>/SYSU/test' \
-                                 --test_data_list_path '<dataset_path>/SYSU/test_list.txt'
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml' \
-                                 --pretrained_weight_path '<project_path>/MambaCD/pretrained_weight/vssm_small_0229_ckpt_epoch_222.pth'
+```text
+results/<dataset>/<model_type>/change_map/
 ```
 
-***语义变化检测***
+## 消融实验设置
 
-运行以下命令在 SECOND 数据集上训练和评估 MambaSCD-Small模型：
-```bash
-python script/train_MambaSCD.py  --dataset 'SECOND' \
-                                 --batch_size 16 \
-                                 --crop_size 256 \
-                                 --max_iters 800000 \
-                                 --model_type MambaSCD_Small \
-                                 --model_param_path '<project_path>/MambaCD/changedetection/saved_models' \ 
-                                 --train_dataset_path '<dataset_path>/SECOND/train' \
-                                 --train_data_list_path '<dataset_path>/SECOND/train_list.txt' \
-                                 --test_dataset_path '<dataset_path>/SECOND/test' \
-                                 --test_data_list_path '<dataset_path>/SECOND/test_list.txt'
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml' \
-                                 --pretrained_weight_path '<project_path>/MambaCD/pretrained_weight/vssm_small_0229_ckpt_epoch_222.pth'
-```
+论文采用了简洁的三步消融：
 
-***Building Damge Assessment***
+| 变体 | Recall | Precision | OA | F1 | IoU |
+|---|---:|---:|---:|---:|---:|
+| Baseline (Frozen DINO) | 76.60 | 88.85 | 98.65 | 82.27 | 69.88 |
+| + Detail Stream | 85.31 | 87.67 | 98.85 | 85.54 | 74.73 |
+| + SGDI & CSFA (Full) | 83.63 | 88.30 | 98.90 | 85.90 | 75.29 |
 
-运行以下命令在 xBD 数据集上训练和评估 MambaBDA-Small：
-```bash
-python script/train_MambaBDA.py  --dataset 'xBD' \
-                                 --batch_size 16 \
-                                 --crop_size 256 \
-                                 --max_iters 800000 \
-                                 --model_type MambaBDA_Small \
-                                 --model_param_path '<project_path>/MambaCD/changedetection/saved_models' \ 
-                                 --train_dataset_path '<dataset_path>/xBD/train' \
-                                 --train_data_list_path '<dataset_path>/xBD/train_list.txt' \
-                                 --test_dataset_path '<dataset_path>/xBD/test' \
-                                 --test_data_list_path '<dataset_path>/xBD/test_list.txt'
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_small_224.yaml' \
-                                 --pretrained_weight_path '<project_path>/MambaCD/pretrained_weight/vssm_small_0229_ckpt_epoch_222.pth'
-```
-### `五、使用训练完成后的权重进行推理`
+对应分析逻辑：
 
-推理前，请先通过命令行进入 [`changedetection`]文件夹。
-```bash
-cd <project_path>/MambaCD/changedetection
-```
+- 仅使用冻结 DINOv2 时，语义较稳健，但空间细节不足，Recall 偏低。
+- 加入细节分支后，Recall 明显提升，说明边界和小目标细节得到补充。
+- 加入交互模块后，Precision 回升，说明语义门控和跨流聚合有助于抑制伪变化。
 
+## 常见问题
 
-***二元变化检测***
+| 问题 | 解决方式 |
+|---|---|
+| `vit_base_patch14_dinov2` 无法识别 | 安装支持 DINOv2 的新版 `timm`。 |
+| `ModuleNotFoundError: peft` | 安装 `peft`。 |
+| `selective_scan_cuda_oflex` 找不到 | 在当前 CUDA/PyTorch 环境下重新编译 `kernels/selective_scan`。 |
+| 推理精度很低 | 使用 `--resume` 加载 FMB-CD 训练好的 checkpoint，不要把 ImageNet/VMamba 权重当作变化检测模型权重。 |
+| CUDA 显存不足 | 降低 `--batch_size`、裁剪尺寸，或关闭额外可视化。 |
+| 找不到 DINOv2 权重 | 将 `dinov2_vitb14_pretrain.pth` 放到 `pretrained_weight/` 下，或修改 `DINO_backbone.py` 中的路径。 |
 
-以下命令展示了如何在 LEVIR-CD+ 数据集上使用训练完成的 MambaBCD-Tiny 推断二元变化图：
+## 引用
 
-* **`提示`**: 请使用 [--resume] 来加载训练过的模型，而不要使用 [--pretrained_weight_path]。 
+论文正式发表后可更新 BibTeX。当前可暂写为：
 
-```bash
-python script/infer_MambaBCD.py  --dataset 'LEVIR-CD+' \
-                                 --model_type 'MambaBCD_Tiny' \
-                                 --test_dataset_path '<dataset_path>/LEVIR-CD+/test' \
-                                 --test_data_list_path '<dataset_path>/LEVIR-CD+/test_list.txt' \
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml' \
-                                 --resume '<saved_model_path>/MambaBCD_Tiny_LEVIRCD+_F1_0.8803.pth'
-```
-
-***语义变化检测***
-
-以下命令展示了如何在 SECOND 数据集上使用训练完成的 MambaSCD-Tiny 推断语义变化图：
-```bash
-python script/infer_MambaBCD.py  --dataset 'SECOND'  \
-                                 --model_type 'MambaSCD_Tiny' \
-                                 --test_dataset_path '<dataset_path>/SECOND/test' \
-                                 --test_data_list_path '<dataset_path>/SECOND/test_list.txt' \
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml' \
-                                 --resume '<saved_model_path>/[your_trained_model].pth'
-```
-
-***建筑物损害评估***
-
-以下命令展示了如何在 xBD 数据集上使用训练完成的 MambaBDA-Tiny 推断语义变化图：
-```bash
-python script/infer_MambaBDA.py  --dataset 'SECOND'  \
-                                 --model_type 'MambaBDA_Tiny' \
-                                 --test_dataset_path '<dataset_path>/xBD/test' \
-                                 --test_data_list_path '<dataset_path>/xBD/test_list.txt' \
-                                 --cfg '<project_path>/MambaCD/changedetection/configs/vssm1/vssm_tiny_224_0229flex.yaml' \
-                                 --resume '<saved_model_path>/[your_trained_model].pth'
-```
-
-## ⚗️结果下载
-
-* *我们上传到Github的代码是经过重新组织整理的。下面提供的模型权重也是采用重新组织整理后的代码训练得到的。因此精度可能会和原始论文不完全一致（大多数情况都高于论文中报告的精度）。*
-
-* *我们还上传了 ChangeMamba的预测结果。您可以下载并直接在论文中使用它们 [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/drive/folders/1kVKgbElM23c-hSNZ_TTqfxXNXrPgNJ6L?usp=sharing)][[BaiduYun](https://pan.baidu.com/s/1RYXRL0emsKDL_9_v82nIjQ?pwd=df2t)].*
-
-### `一、VMamba（编码器）的预训练权重`
-
-| 方法 | ImageNet (ckpt) | 
-| :---: | :---: |
-| VMamba-Tiny | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/160PXughGMNZ1GyByspLFS68sfUdrQE2N/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1P9KRVy4lW8LaKJ898eQ_0w?pwd=7qxh)] |   
-| VMamba-Small | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1dxHtFEgeJ9KL5WiLlvQOZK5jSEEd2Nmz/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1RRjTA9ONhO43sBLp_a2TSw?pwd=6qk1)]   | 
-| VMamba-Base |  [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1kUHSBDoFvFG58EmwWurdSVZd8gyKWYfr/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/14_syzqwNnVB8rD3tejEZ4w?pwd=q825)] | 
-
-### `二、二元变化检测`
-
-| 方法 | SYSU (ckpt) | LEVIR-CD+ (ckpt) | WHU-CD (ckpt) | 
-| :---: | :---: | :---: | :---: |
-| MambaBCD-Tiny | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1qoivh0zrZjpPzUOiIxLWZn7kdBQ-MqnY/view?usp=sharing)][[BaiduYun](https://pan.baidu.com/s/160RiqDQKB6rBwn7Fke6xFQ?pwd=wqf9)] |  [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1AtiXBBCoofi1e5g4STYUzBgJ1fYN4VhN/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/13dGC_J-wyIfoPwoPJ5Uc6Q?pwd=8ali)]	 | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1ZLKXhGKgnWoyS0X8g3HS45a3X1MP_QE6/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1DhTedGZdIC80y06tog1xbg?pwd=raf0)] | 
-| MambaBCD-Small | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1ZEPF6CvvFynL-yu_wpEYdpHMHl7tahpH/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1f8iwuKCkElU9rc24_ZzXBw?pwd=46p5)]   | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/19jEBLheCwEnQqF23EqNrn1r79D-nZ95y/view?usp=sharing)][[BaiduYun](https://pan.baidu.com/s/1EKWp-tF0EEGgZ-nVlW8S1g?pwd=n3qz)]  | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1ejiBIhSAJF0P65Xn6DpzRpARiIGPLiWw/view?usp=drive_link)][[BaiduYun]](https://pan.baidu.com/s/1tIWyfJa2o9EMwrKg-gKTnw?pwd=vizm) | 
-| MambaBCD-Base |  [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/14WbK9KjOIOWuea3JAgvIfyDvqACExZ0s/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1xiWWjlhuJWA40cMggevdlA?pwd=4jft)] |[[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1uQy5tGXW20xFZvF7hIvZvsi7-JU7tg7G/view?usp=drive_link)] [[BaiduYun](https://pan.baidu.com/s/1M_u7HdIEFIEA2d3L1kfu3Q?pwd=rkgp)] | [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1K7aSuT3os7LR9rUvoyVNP-x0hWKZocrn/view?usp=drive_link)][[BaiduYun](https://pan.baidu.com/s/1o6Z6ecIJ59K9eB2KqNMD9w?pwd=4mqd)] |
-
-### `三、语义变化检测`
-| 方法 |  SECOND (ckpt) | OpenMapCD (ckpt) |
-| :---: | :---: | :---: | 
-| MambaSCD-Tiny |  [[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/1Q2hMC320vCpp5MQA8SK54iFY7L5JF9qN/view?usp=sharing)][[BaiduYun](https://pan.baidu.com/s/1eHUjKm8Ty0w92BvOoj53Fw?pwd=6hnj)]  | -- |
-| MambaSCD-Small | --  | --|
-| MambaSCD-Base |[[Zenodo](https://zenodo.org/records/14037769)][[GDrive](https://drive.google.com/file/d/12aJ4sL0r02-rB5K6dixtr6FGJ3kNwlFy/view?usp=sharing)][[BaiduYun](https://pan.baidu.com/s/1GxNDC2JAEvPmOiNArLrYmw?pwd=sr3i)]  | --|
-
-
-
-### `四、建筑物损害评估`
-| 方法 |  xBD (ckpt) | BRIGHT (ckpt) |
-| :---: | :---: | :---: | 
-| MambaBDA-Tiny |  -- |  [[Zenodo](https://zenodo.org/records/14037769)]  | 
-| MambaBDA-Small | -- | -- |
-| MambaBDA-Base | -- | -- | 
-
-## 🤔常见问题
-下面列出了一些常见问题的快速、简便的解决方案。
-
-| 问题 | 解决方案 | 
-| :---: | :---: | 
-| 关于SECOND数据集的问题 | 请参考 Issue [#13](https://github.com/ChenHongruixuan/MambaCD/issues/13) / [#22](https://github.com/ChenHongruixuan/MambaCD/issues/22) / [#45](https://github.com/ChenHongruixuan/MambaCD/issues/45) |
-| CUDA out of memory issue | 请降低训练和评估的batch size  |
-| 修改模型结构 | 请参考 Issue [#44](https://github.com/ChenHongruixuan/MambaCD/issues/44)  |
-| 关于iteration、epoch和batch size之间的关系 | 请参考 Issue [#32](https://github.com/ChenHongruixuan/MambaCD/issues/32) / [#48](https://github.com/ChenHongruixuan/MambaCD/issues/48)  |
-NameError: name 'selective_scan_cuda_oflex' is not defined | 请参考 Issue [#9](https://github.com/ChenHongruixuan/MambaCD/issues/9) | 
-推理阶段精度很低 | 请用 --resume 加载模型，而不是用 --pretrained_weight_path 加载模型 | 
-
-
-## 📜引用
-
-如果我们的代码有助于您的研究，请考虑引用我们的论文，并给我们一个⭐️star⭐️ :)
-```
-@article{chen2024changemamba,
-  author={Hongruixuan Chen and Jian Song and Chengxi Han and Junshi Xia and Naoto Yokoya},
-  journal={IEEE Transactions on Geoscience and Remote Sensing}, 
-  title={ChangeMamba: Remote Sensing Change Detection with Spatiotemporal State Space Model}, 
-  year={2024},
-  volume={62},
-  number={},
-  pages={1-20},
-  doi={10.1109/TGRS.2024.3417253}
+```bibtex
+@misc{yu2026fmbcd,
+  title  = {FMB-CD: Foundation Model Bridged Change Detection via Semantic-Guided Detail Injection and Cross-Stream Feature Aggregation},
+  author = {Yue Yu and Maoteng Zheng},
+  year   = {2026},
+  note   = {Manuscript in preparation}
 }
 ```
 
+本项目基于 ChangeMamba 改造：
 
-## 🤝致谢
-本项目采用和借鉴了([paper](https://arxiv.org/abs/2401.10166), [code](https://github.com/MzeroMiko/VMamba)), ScanNet ([paper](https://arxiv.org/abs/2212.05245), [code](https://github.com/ggsDing/SCanNet)), BDANet ([paper](https://ieeexplore.ieee.org/document/9442902), [code](https://github.com/ShaneShen/BDANet-Building-Damage-Assessment))等仓库。感谢他们的优秀工作！
+```bibtex
+@article{chen2024changemamba,
+  author  = {Hongruixuan Chen and Jian Song and Chengxi Han and Junshi Xia and Naoto Yokoya},
+  journal = {IEEE Transactions on Geoscience and Remote Sensing},
+  title   = {ChangeMamba: Remote Sensing Change Detection with Spatiotemporal State Space Model},
+  year    = {2024},
+  volume  = {62},
+  pages   = {1-20},
+  doi     = {10.1109/TGRS.2024.3417253}
+}
+```
 
-## 🙋联系我们
-***如有任何问题，请随时[联系我们。](mailto:Qschrx@gmail.com)***
+## 致谢
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ChenHongruixuan/MambaCD&type=Date)](https://star-history.com/#ChenHongruixuan/MambaCD&Date)
+本仓库基于 ChangeMamba、VMamba、timm、PEFT/LoRA 和 DINOv2 等优秀开源项目构建。使用时请同时遵守原项目和数据集的许可证要求。
